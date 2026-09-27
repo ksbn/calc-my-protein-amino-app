@@ -1,4 +1,4 @@
-Amino App — protein scanner 
+Amino Plate App — protein scanner 
 
 Upload or photograph a plate of food. Gemini's free-tier vision model identifies each item and estimates its weight; USDA FoodData Central supplies protein-per-100g for each item; the app totals the protein on the plate. 
 
