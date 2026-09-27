@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Amino Plate — protein scanner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #16211C;
+    --panel: #1D2A22;
+    --border: #33453A;
+    --text: #EDEBE2;
+    --muted: #8FA396;
+    --amber: #F0B429;
+    --rust: #C4664F;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  body {
+    display: flex;
+    justify-content: center;
+    padding: 64px 24px 96px;
+  }
+  main { width: 100%; max-width: 600px; }
+
+  .wordmark {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 13px;
+    letter-spacing: 0.02em;
+    color: var(--muted);
+    margin-bottom: 40px;
+  }
+
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-optical-sizing: auto;
+    font-weight: 500;
+    font-size: 38px;
+    line-height: 1.15;
+    margin: 0 0 12px;
+    max-width: 15ch;
+  }
+  .subhead {
+    color: var(--muted);
+    font-size: 16px;
+    line-height: 1.5;
+    max-width: 42ch;
+    margin: 0 0 40px;
+  }
+
+  .platform {
+    border: 1.5px dashed var(--border);
+    border-radius: 4px;
+    padding: 40px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.2s ease, background 0.2s ease;
+    position: relative;
+  }
+  .platform:hover, .platform.drag {
+    border-color: var(--amber);
+    background: rgba(240, 180, 41, 0.04);
+  }
+  .platform svg { width: 34px; height: 34px; color: var(--muted); margin-bottom: 14px; }
+  .platform-text { font-size: 15px; color: var(--text); margin: 0 0 4px; }
+  .platform-hint { font-size: 13px; color: var(--muted); margin: 0; }
+  #fileInput, #cameraInput { display: none; }
+
+  .preview-row { display: flex; align-items: center; gap: 16px; margin-top: 20px; }
+  .preview-row img { width: 64px; height: 64px; object-fit: cover; border-radius: 4px; border: 1px solid var(--border); }
+  .preview-name { font-size: 14px; color: var(--muted); }
+
+  .status {
+    margin-top: 24px;
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 14px;
+    color: var(--amber);
+    display: none;
+    align-items: center;
+    gap: 10px;
+  }
+  .status.visible { display: flex; }
+  .dot-flicker::after {
+    content: '';
+    animation: flicker 1.1s steps(1) infinite;
+  }
+  @keyframes flicker {
+    0% { content: ''; }
+    25% { content: '.'; }
+    50% { content: '..'; }
+    75% { content: '...'; }
+  }
+
+  .error-box {
+    margin-top: 24px;
+    border-left: 2px solid var(--rust);
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--text);
+    background: rgba(196, 102, 79, 0.08);
+    display: none;
+  }
+  .error-box.visible { display: block; }
+
+  .ticket {
+    margin-top: 40px;
+    border-top: 1px solid var(--border);
+    padding-top: 28px;
+    display: none;
+  }
+  .ticket.visible { display: block; }
+
+  .item-row { margin-bottom: 18px; }
+  .item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 12px;
+    font-size: 15px;
+  }
+  .item-name { color: var(--text); }
+  .item-figures {
+    font-family: 'IBM Plex Mono', monospace;
+    color: var(--muted);
+    white-space: nowrap;
+    font-size: 14px;
+  }
+  .item-figures .protein { color: var(--text); }
+  .meter {
+    height: 3px;
+    background: var(--border);
+    border-radius: 2px;
+    margin-top: 8px;
+    overflow: hidden;
+  }
+  .meter-fill { height: 100%; background: var(--amber); border-radius: 2px; }
+  .not-found { color: var(--rust); font-size: 12px; margin-top: 4px; }
+
+  .total-row {
+    margin-top: 28px;
+    padding-top: 20px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+  }
+  .total-label { font-size: 15px; color: var(--muted); }
+  .total-value {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 32px;
+    font-weight: 600;
+    color: var(--amber);
+  }
+  .total-value span { font-size: 16px; color: var(--muted); font-weight: 400; }
+
+  .confidence-note {
+    margin-top: 16px;
+    font-size: 13px;
+    color: var(--muted);
+    line-height: 1.5;
+  }
+
+  .rescan {
+    margin-top: 28px;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    padding: 8px 16px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: none;
+  }
+  .rescan.visible { display: inline-block; }
+  .rescan:hover { border-color: var(--amber); }
+</style>
+</head>
+<body>
+<main>
+  <div class="wordmark">Amino Plate</div>
+  <h1>How much protein is on your plate?</h1>
+  <p class="subhead">Take or upload a photo of a meal. The scanner identifies each item, estimates its weight, and totals the protein.</p>
+
+  <div class="platform" id="platform">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4 8h16M4 8v10a1 1 0 001 1h14a1 1 0 001-1V8M4 8l1.5-4h13L20 8M9 12h6"/></svg>
+    <p class="platform-text">Drop a photo here, or click to choose one</p>
+    <p class="platform-hint">JPEG, PNG, or WEBP</p>
+    <input type="file" id="fileInput" accept="image/jpeg,image/png,image/webp">
+  </div>
+
+  <div class="preview-row" id="previewRow" style="display:none;">
+    <img id="previewImg" alt="Plate preview">
+    <span class="preview-name" id="previewName"></span>
+  </div>
+
+  <div class="status" id="status"><span class="dot-flicker">Weighing plate</span></div>
+  <div class="error-box" id="errorBox"></div>
+
+  <div class="ticket" id="ticket">
+    <div id="itemList"></div>
+    <div class="total-row">
+      <span class="total-label">Total protein</span>
+      <span class="total-value" id="totalValue">0<span> g</span></span>
+    </div>
+    <p class="confidence-note" id="confidenceNote"></p>
+  </div>
+
+  <button class="rescan" id="rescanBtn">Scan another plate</button>
+</main>
+
+<script>
+const platform = document.getElementById('platform');
+const fileInput = document.getElementById('fileInput');
+const previewRow = document.getElementById('previewRow');
+const previewImg = document.getElementById('previewImg');
+const previewName = document.getElementById('previewName');
+const statusEl = document.getElementById('status');
+const errorBox = document.getElementById('errorBox');
+const ticket = document.getElementById('ticket');
+const itemList = document.getElementById('itemList');
+const totalValue = document.getElementById('totalValue');
+const confidenceNote = document.getElementById('confidenceNote');
+const rescanBtn = document.getElementById('rescanBtn');
+
+platform.addEventListener('click', () => fileInput.click());
+
+['dragenter', 'dragover'].forEach(evt =>
+  platform.addEventListener(evt, e => { e.preventDefault(); platform.classList.add('drag'); })
+);
+['dragleave', 'drop'].forEach(evt =>
+  platform.addEventListener(evt, e => { e.preventDefault(); platform.classList.remove('drag'); })
+);
+platform.addEventListener('drop', e => {
+  const file = e.dataTransfer.files[0];
+  if (file) handleFile(file);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) handleFile(fileInput.files[0]);
+});
+rescanBtn.addEventListener('click', reset);
+
+function reset() {
+  ticket.classList.remove('visible');
+  errorBox.classList.remove('visible');
+  previewRow.style.display = 'none';
+  rescanBtn.classList.remove('visible');
+  fileInput.value = '';
+}
+
+async function handleFile(file) {
+  reset();
+  previewImg.src = URL.createObjectURL(file);
+  previewName.textContent = file.name;
+  previewRow.style.display = 'flex';
+  statusEl.classList.add('visible');
+
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    const res = await fetch('/api/analyze', { method: 'POST', body: formData });
+    const data = await res.json();
+    statusEl.classList.remove('visible');
+
+    if (!res.ok) {
+      showError(data.detail || 'Something went wrong reading that photo. Try a clearer, well-lit shot of the plate.');
+      return;
+    }
+    renderResults(data);
+  } catch (err) {
+    statusEl.classList.remove('visible');
+    showError('Could not reach the server. Check that the backend is running and try again.');
+  }
+}
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.classList.add('visible');
+  rescanBtn.classList.add('visible');
+}
+
+function renderResults(data) {
+  itemList.innerHTML = '';
+  const maxProtein = Math.max(...data.items.map(i => i.protein_g || 0), 0.01);
+
+  data.items.forEach(item => {
+    const row = document.createElement('div');
+    row.className = 'item-row';
+
+    const proteinText = item.found_in_database
+      ? `<span class="protein">${item.protein_g} g</span> protein`
+      : `<span class="protein">—</span> protein`;
+
+    row.innerHTML = `
+      <div class="item-top">
+        <span class="item-name">${item.name}</span>
+        <span class="item-figures">${Math.round(item.grams)} g · ${proteinText}</span>
+      </div>
+      <div class="meter"><div class="meter-fill" style="width:${((item.protein_g || 0) / maxProtein) * 100}%"></div></div>
+      ${!item.found_in_database ? '<p class="not-found">Not found in the nutrition database — excluded from total</p>' : ''}
+    `;
+    itemList.appendChild(row);
+  });
+
+  totalValue.innerHTML = `${data.total_protein_g}<span> g</span>`;
+  confidenceNote.textContent = data.confidence_note || '';
+  ticket.classList.add('visible');
+  rescanBtn.classList.add('visible');
+}
+</script>
+</body>
+</html>
