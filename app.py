@@ -16,7 +16,7 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USDA_API_KEY = os.getenv("USDA_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-flash-latest")
 
 if not GEMINI_API_KEY:
     raise RuntimeError("Set GEMINI_API_KEY in your .env file")
@@ -62,7 +62,7 @@ def extract_json(text: str) -> dict:
 
 
 async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
-    models_to_try = [GEMINI_MODEL, "gemini-flash-latest"]
+    models_to_try = [GEMINI_MODEL, "gemini-flash-latest", "gemini-2.0-flash"]
     last_exc = None
     
     for model_name in dict.fromkeys(models_to_try):
@@ -156,4 +156,7 @@ async def analyze_plate(file: UploadFile = File(...)):
 
 @app.get("/")
 async def index():
-    return FileResponse(STATIC_DIR / "index.html")
+    path = STATIC_DIR / "index.html"
+    if not path.exists():
+        return {"error": "index.html not found in static folder"}
+    return FileResponse(path)
