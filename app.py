@@ -62,7 +62,7 @@ def extract_json(text: str) -> dict:
 
 
 async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
-    models_to_try = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
+    models_to_try = [GEMINI_MODEL, "gemini-flash-latest"]
     last_exc = None
     
     for model_name in dict.fromkeys(models_to_try):
