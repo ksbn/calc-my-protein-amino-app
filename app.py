@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -11,19 +12,11 @@ from fastapi.staticfiles import StaticFiles
 from google import genai
 from google.genai import types
 
-BASE_DIR = Path(__file__).resolve().parent
-STATIC_DIR = BASE_DIR / "static"
-os.makedirs(STATIC_DIR, exist_ok=True)
-
-app = FastAPI()
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USDA_API_KEY = os.getenv("USDA_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") # Use a fast flash model
 
 if not GEMINI_API_KEY:
     raise RuntimeError("Set GEMINI_API_KEY in your .env file")
@@ -34,7 +27,10 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 app = FastAPI(title="Protein Scanner")
 
-STATIC_DIR = Path(__file__).parent / "static"
+BASE_DIR = Path(__file__).resolve().parent
+STATIC_DIR = BASE_DIR / "static"
+os.makedirs(STATIC_DIR, exist_ok=True)
+
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 VISION_PROMPT = """You are looking at a photo of a plate of food. Identify every \
@@ -53,11 +49,8 @@ exact shape:
 }
 
 Rules:
-- "search_term" should be a plain, generic USDA-style food description (no \
-brand names, no cooking-adjective stacking) so it can be looked up in a \
-nutrition database.
-- Only include items that are actually food (skip garnish that's purely \
-decorative, like a lemon wedge that won't be eaten, unless it's substantial).
+- "search_term" should be a plain, generic USDA-style food description (no brand names, no cooking-adjective stacking) so it can be looked up in a nutrition database.
+- Only include items that are actually food (skip garnish that's purely decorative, like a lemon wedge that won't be eaten, unless it's substantial).
 - Give your best numeric estimate for grams even if uncertain — never omit it.
 """
 
@@ -93,19 +86,22 @@ async def lookup_protein_per_100g(search_term: str) -> tuple[float | None, str |
         "pageSize": 5,
         "dataType": ["Foundation", "SR Legacy", "Survey (FNDDS)"],
     }
-    async with httpx.AsyncClient(timeout=15) as http_client:
-        resp = await http_client.get(url, params=params)
-    if resp.status_code != 200:
-        return None, None
-    data = resp.json()
-    foods = data.get("foods", [])
-    if not foods:
-        return None, None
-    best = foods[0]
-    for nutrient in best.get("foodNutrients", []):
-        if nutrient.get("nutrientId") == 1003 or nutrient.get("nutrientName") == "Protein":
-            return nutrient.get("value"), best.get("description")
-    return None, best.get("description")
+    async with httpx.AsyncClient(timeout=10) as http_client:
+        try:
+            resp = await http_client.get(url, params=params)
+            if resp.status_code != 200:
+                return None, None
+            data = resp.json()
+            foods = data.get("foods", [])
+            if not foods:
+                return None, None
+            best = foods[0]
+            for nutrient in best.get("foodNutrients", []):
+                if nutrient.get("nutrientId") == 1003 or nutrient.get("nutrientName") == "Protein":
+                    return nutrient.get("value"), best.get("description")
+            return None, best.get("description")
+        except Exception:
+            return None, None
 
 
 @app.post("/api/analyze")
@@ -115,13 +111,18 @@ async def analyze_plate(file: UploadFile = File(...)):
 
     image_bytes = await file.read()
     vision_result = await identify_foods(image_bytes, file.content_type)
+    vision_items = vision_result.get("items", [])
+
+    tasks = [
+        lookup_protein_per_100g(item.get("search_term", item["name"]))
+        for item in vision_items
+    ]
+    usda_results = await asyncio.gather(*tasks)
 
     items = []
     total_protein = 0.0
-    for item in vision_result.get("items", []):
-        protein_per_100g, matched_name = await lookup_protein_per_100g(
-            item.get("search_term", item["name"])
-        )
+
+    for item, (protein_per_100g, matched_name) in zip(vision_items, usda_results):
         grams = float(item.get("grams", 0))
         if protein_per_100g is not None:
             item_protein = round(protein_per_100g * grams / 100, 1)
