@@ -16,7 +16,7 @@ load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USDA_API_KEY = os.getenv("USDA_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash") # Use a fast flash model
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 if not GEMINI_API_KEY:
     raise RuntimeError("Set GEMINI_API_KEY in your .env file")
@@ -62,20 +62,27 @@ def extract_json(text: str) -> dict:
 
 
 async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[
-            VISION_PROMPT,
-            types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-        ],
+    models_to_try = [GEMINI_MODEL, "gemini-2.5-flash", "gemini-1.5-flash"]
+    last_exc = None
+    
+    for model_name in dict.fromkeys(models_to_try):
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=[
+                    VISION_PROMPT,
+                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                ],
+            )
+            raw = response.text or ""
+            return extract_json(raw)
+        except Exception as exc:
+            last_exc = exc
+            continue
+            
+    raise HTTPException(
+        status_code=502, detail=f"Could not parse vision model response or model not found: {last_exc}"
     )
-    raw = response.text or ""
-    try:
-        return extract_json(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=502, detail=f"Could not parse vision model response: {exc}"
-        ) from exc
 
 
 async def lookup_protein_per_100g(search_term: str) -> tuple[float | None, str | None]:
