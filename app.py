@@ -62,9 +62,9 @@ def extract_json(text: str) -> dict:
 
 
 async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
-    models_to_try = [GEMINI_MODEL, "gemini-flash-latest", "gemini-2.0-flash"]
-    last_exc = None
-    
+    models_to_try = [GEMINI_MODEL, "gemini-3.8-flash", "gemini-3.1-flash-lite"]
+    errors = []
+
     for model_name in dict.fromkeys(models_to_try):
         try:
             response = client.models.generate_content(
@@ -74,16 +74,11 @@ async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
                     types.Part.from_bytes(data=image_bytes, mime_type=media_type),
                 ],
             )
-            raw = response.text or ""
-            return extract_json(raw)
+            return extract_json(response.text or "")
         except Exception as exc:
-            last_exc = exc
-            continue
-            
-    raise HTTPException(
-        status_code=502, detail=f"Could not parse vision model response or model not found: {last_exc}"
-    )
+            errors.append(f"{model_name}: {str(exc)[:200]}")
 
+    raise HTTPException(status_code=502, detail=" | ".join(errors))
 
 async def lookup_protein_per_100g(search_term: str) -> tuple[float | None, str | None]:
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
