@@ -61,29 +61,40 @@ def extract_json(text: str) -> dict:
     return json.loads(text)
 
 
+import time
+
 async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
-    models_to_try = [GEMINI_MODEL, "gemini-3.8-flash", "gemini-3.1-flash-lite"]
+    models_to_try = list(dict.fromkeys([GEMINI_MODEL, "gemini-3.8-flash", "gemini-3.1-flash-lite"]))
+    deadline = time.monotonic() + 40  
     errors = []
 
-    for model_name in dict.fromkeys(models_to_try):
-        for attempt in range(3):
+    for model_name in models_to_try:
+        for attempt in range(2):
+            remaining = deadline - time.monotonic()
+            if remaining < 5:
+                break
             try:
-                response = await client.aio.models.generate_content(
-                    model=model_name,
-                    contents=[
-                        VISION_PROMPT,
-                        types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                    ],
+                response = await asyncio.wait_for(
+                    client.aio.models.generate_content(
+                        model=model_name,
+                        contents=[
+                            VISION_PROMPT,
+                            types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                        ],
+                    ),
+                    timeout=min(remaining, 20),
                 )
                 return extract_json(response.text or "")
+            except asyncio.TimeoutError:
+                errors.append(f"{model_name}: timed out")
+                break
             except Exception as exc:
-                errors.append(f"{model_name} (try {attempt + 1}): {str(exc)[:150]}")
+                errors.append(f"{model_name}: {str(exc)[:120]}")
                 code = getattr(exc, "code", None)
-             
                 if code in (500, 503) or isinstance(exc, json.JSONDecodeError):
-                    await asyncio.sleep(1.5 * (attempt + 1))
+                    await asyncio.sleep(1.5)
                     continue
-                break  # 404, 403, 429 etc.: retrying this model won't help
+                break
 
     raise HTTPException(
         status_code=503,
