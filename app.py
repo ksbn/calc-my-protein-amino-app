@@ -66,19 +66,30 @@ async def identify_foods(image_bytes: bytes, media_type: str) -> dict:
     errors = []
 
     for model_name in dict.fromkeys(models_to_try):
-        try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[
-                    VISION_PROMPT,
-                    types.Part.from_bytes(data=image_bytes, mime_type=media_type),
-                ],
-            )
-            return extract_json(response.text or "")
-        except Exception as exc:
-            errors.append(f"{model_name}: {str(exc)[:200]}")
+        for attempt in range(3):
+            try:
+                response = await client.aio.models.generate_content(
+                    model=model_name,
+                    contents=[
+                        VISION_PROMPT,
+                        types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                    ],
+                )
+                return extract_json(response.text or "")
+            except Exception as exc:
+                errors.append(f"{model_name} (try {attempt + 1}): {str(exc)[:150]}")
+                code = getattr(exc, "code", None)
+             
+                if code in (500, 503) or isinstance(exc, json.JSONDecodeError):
+                    await asyncio.sleep(1.5 * (attempt + 1))
+                    continue
+                break  # 404, 403, 429 etc.: retrying this model won't help
 
-    raise HTTPException(status_code=502, detail=" | ".join(errors))
+    raise HTTPException(
+        status_code=503,
+        detail="The AI model is busy right now. Please try again in a minute. "
+        + " | ".join(errors[-3:]),
+    )
 
 async def lookup_protein_per_100g(search_term: str) -> tuple[float | None, str | None]:
     url = "https://api.nal.usda.gov/fdc/v1/foods/search"
